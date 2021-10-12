@@ -74,13 +74,7 @@ func (p *GncpPool) Get() (net.Conn, error) {
 	if p.isClosed() == true {
 		return nil, errPoolIsClose
 	}
-	go func() {
-		conn, err := p.createConn()
-		if err != nil {
-			return
-		}
-		p.conns <- conn
-	}()
+	go p.fastCreateConnection()
 	select {
 	case conn := <-p.conns:
 		return p.packConn(conn), nil
@@ -93,13 +87,7 @@ func (p *GncpPool) GetWithTimeout(timeout time.Duration) (net.Conn, error) {
 	if p.isClosed() == true {
 		return nil, errPoolIsClose
 	}
-	go func() {
-		conn, err := p.createConn()
-		if err != nil {
-			return
-		}
-		p.conns <- conn
-	}()
+	go p.fastCreateConnection()
 	select {
 	case conn := <-p.conns:
 		return p.packConn(conn), nil
@@ -112,18 +100,23 @@ func (p *GncpPool) GetWithContext(ctx context.Context) (net.Conn, error) {
 	if p.isClosed() == true {
 		return nil, errPoolIsClose
 	}
-	go func() {
-		conn, err := p.createConn()
-		if err != nil {
-			return
-		}
-		p.conns <- conn
-	}()
+	go p.fastCreateConnection()
 	select {
 	case conn := <-p.conns:
 		return p.packConn(conn), nil
 	case <-ctx.Done():
 		return nil, errContextClose
+	}
+}
+
+//auto speed to Create connection
+func (p *GncpPool) fastCreateConnection() {
+	for {
+		conn, err := p.createConn()
+		if err != nil {
+			return
+		}
+		p.conns <- conn
 	}
 }
 
