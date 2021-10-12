@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -77,6 +79,9 @@ func (p *GncpPool) Get() (net.Conn, error) {
 	go p.fastCreateConnection()
 	select {
 	case conn := <-p.conns:
+		if err := connCheck(conn); err != nil {
+			return p.Get()
+		}
 		return p.packConn(conn), nil
 	}
 }
@@ -90,10 +95,40 @@ func (p *GncpPool) GetWithTimeout(timeout time.Duration) (net.Conn, error) {
 	go p.fastCreateConnection()
 	select {
 	case conn := <-p.conns:
+		if err := connCheck(conn); err != nil {
+			return p.GetWithTimeout(timeout)
+		}
 		return p.packConn(conn), nil
 	case <-time.After(timeout):
 		return nil, errTimeOut
 	}
+}
+
+func connCheck(conn net.Conn) error {
+	var sysErr error = nil
+	rc, err := conn.(syscall.Conn).SyscallConn()
+	if err != nil {
+		return err
+	}
+	err = rc.Read(func(fd uintptr) bool {
+		var buf []byte = []byte{0}
+		n, _, err := syscall.Recvfrom(int(fd), buf, syscall.MSG_PEEK|syscall.MSG_DONTWAIT)
+		switch {
+		case n == 0 && err == nil:
+			sysErr = io.EOF
+		case err == syscall.EAGAIN || err == syscall.EWOULDBLOCK:
+			sysErr = nil
+		default:
+			sysErr = err
+		}
+		return true
+
+	})
+	if err != nil {
+		return err
+	}
+
+	return sysErr
 }
 
 func (p *GncpPool) GetWithContext(ctx context.Context) (net.Conn, error) {
@@ -103,6 +138,9 @@ func (p *GncpPool) GetWithContext(ctx context.Context) (net.Conn, error) {
 	go p.fastCreateConnection()
 	select {
 	case conn := <-p.conns:
+		if err := connCheck(conn); err != nil {
+			return p.GetWithContext(ctx)
+		}
 		return p.packConn(conn), nil
 	case <-ctx.Done():
 		return nil, errContextClose
