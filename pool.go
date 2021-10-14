@@ -164,8 +164,6 @@ func (p *GncpPool) Close() error {
 	if p.isClosed() == true {
 		return errPoolIsClose
 	}
-	p.lock.Lock()
-	defer p.lock.Unlock()
 	p.closed = true
 	close(p.conns)
 	for conn := range p.conns {
@@ -180,9 +178,7 @@ func (p *GncpPool) Put(conn net.Conn) error {
 		return errPoolIsClose
 	}
 	if conn == nil {
-		p.lock.Lock()
 		p.totalConnNum = p.totalConnNum - 1
-		p.lock.Unlock()
 		return errors.New("Cannot put nil to connection pool.")
 	}
 
@@ -207,9 +203,7 @@ func (p *GncpPool) Remove(conn net.Conn) error {
 		return errPoolIsClose
 	}
 
-	p.lock.Lock()
 	p.totalConnNum = p.totalConnNum - 1
-	p.lock.Unlock()
 	switch conn.(type) {
 	case *CpConn:
 		return conn.(*CpConn).Destroy()
@@ -221,8 +215,8 @@ func (p *GncpPool) Remove(conn net.Conn) error {
 
 // createConn will create one connection from connCreator. And increase connection counter.
 func (p *GncpPool) createConn() (net.Conn, error) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
+	//p.lock.Lock()
+	//defer p.lock.Unlock()
 	if p.totalConnNum >= p.maxConnNum {
 		return nil, fmt.Errorf("Connot Create new connection. Now has %d.Max is %d", p.totalConnNum, p.maxConnNum)
 	}
